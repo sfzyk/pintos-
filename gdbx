@@ -1,0 +1,3 @@
+file threads/build/kernel.o
+target remote localhost:1234
+l main
