@@ -196,8 +196,32 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  if(lock->holder != NULL  && !thread_mlfqs){
+      struct thread* cur = thread_current();
+      cur -> lock_waiting = lock;
+
+      struct thread* hold_thread = cur;
+      while(hold_thread->lock_waiting!=NULL){
+          if(cur->priority > hold_thread->lock_waiting->max_priority){
+            lock->max_priority = cur->priority;        /*update priority order along list hold */
+
+            if(hold_thread->lock_waiting && hold_thread->lock_waiting->holder){
+              hold_thread = hold_thread->lock_waiting->holder; 
+            }
+          }
+      }
+  }
+
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+  /* current thread have gain it*/
+  struct thread* cur = thread_current();
+  lock->holder = cur;
+  if(!thread_mlfqs){
+    lock->max_priority =  cur->priority;
+    cur->lock_waiting = NULL;
+    list_insert(&cur->locks,&lock->elem);
+    
+  }
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
