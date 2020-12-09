@@ -201,6 +201,7 @@ thread_create (const char *name, int priority,
   t->blocked_ticked = 0;
   /* Add to run queue. */
   thread_unblock (t);
+  
   if(thread_current()->priority < t->priority ){
     thread_yield();
   }
@@ -342,8 +343,12 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
-  thread_yield();
+  if(thread_mlfqs)return;
+  struct thread * cur = thread_current();
+  int old_base_priority = cur->base_priority;
+  cur->base_priority = new_priority;
+  update_thread_priority_by_holding_locks(thread_current());
+  thread_yield(); 
 }
 
 /* Returns the current thread's priority. */
@@ -475,7 +480,11 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
   // list_push_back (&all_list, &t->allelem);
+
   list_insert_ordered(&all_list,&t->allelem,(list_less_func *)& cmp_thread_priority,NULL);
+  list_init(&t->locks);
+  t->lock_waiting = NULL;
+
   intr_set_level(old_level);
 }
 
@@ -594,16 +603,12 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 void blocked_thread_check (struct thread *t, void *aux UNUSED){
-  
   if(t->status == THREAD_BLOCKED && t->blocked_ticked > 0){
-
       t->blocked_ticked -- ;
       if(t->blocked_ticked == 0){
         thread_unblock(t);
       }
-
   }
-
 }
 
 bool cmp_thread_priority(const struct list_elem* a, const struct list_elem*b ,void * axu UNUSED){
@@ -612,7 +617,12 @@ bool cmp_thread_priority(const struct list_elem* a, const struct list_elem*b ,vo
 
 void update_thread_priority_by_holding_locks(struct thread* t){
   struct list_elem *e;
+  int max_priority = t->base_priority;
   for(e = list_begin(&t->locks);e!=list_end(&t->locks); e=list_next(e)){
-
+        struct lock * lo = list_entry(e,struct lock,elem);
+        if(lo->max_priority>max_priority){
+          max_priority = lo->max_priority;
+        }
   }
+  t->priority = max_priority;
 }
