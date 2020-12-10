@@ -97,6 +97,7 @@ struct thread
     struct list_elem elem;              /* List element. ready_list & sema_waiter*/
     int64_t blocked_ticked;                 /* ticks remains for block*/ 
     fixed_t recent_cpu;
+    int64_t nice;
 
 
 #ifdef USERPROG
