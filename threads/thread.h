@@ -94,7 +94,7 @@ struct thread
     struct list locks;                  /* Locks a thread holds,it get actully priority from that*/
     struct lock *lock_waiting;         /* a Thread can only have one donating locks*/
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. ready_list & sema_waiter*/
+    struct list_elem elem;              /* List element. ready_list & sema_waiter & blocked_list*/
     int64_t blocked_ticked;                 /* ticks remains for block*/ 
     fixed_t recent_cpu;
     int64_t nice;
@@ -136,6 +136,7 @@ void thread_yield (void);
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
+void blocked_thread_foreach (thread_action_func *func, void *aux);
 
 int thread_get_priority (void);
 void thread_set_priority (int);

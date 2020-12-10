@@ -83,7 +83,7 @@ timer_elapsed (int64_t then)
 {
   return timer_ticks () - then;
 }
-
+extern struct list blocked_thread_list;
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
@@ -99,6 +99,9 @@ timer_sleep (int64_t ticks)
   // int64_t start = timer_ticks ();
   struct thread * cur =  thread_current();
   cur->blocked_ticked = ticks;
+  list_remove(&cur->elem);
+  list_push_back(&blocked_thread_list, &cur->elem);
+
   thread_block();
   intr_set_level(old_level);
   // while (timer_elapsed (start) < ticks) 
@@ -174,14 +177,16 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
+
+
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  // printf("ticks %d \n",ticks);
-  thread_foreach(blocked_thread_check, NULL);
+  blocked_thread_foreach(blocked_thread_check, NULL);
   thread_tick ();
 
   if (thread_mlfqs)
