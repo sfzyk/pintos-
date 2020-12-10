@@ -11,6 +11,8 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "fix_point.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -49,6 +51,7 @@ struct kernel_thread_frame
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
+static fixed_t load_arg;
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -612,7 +615,11 @@ void blocked_thread_check (struct thread *t, void *aux UNUSED){
 }
 
 bool cmp_thread_priority(const struct list_elem* a, const struct list_elem*b ,void * axu UNUSED){
-  return list_entry(a,struct thread, elem)->priority > list_entry(b,struct thread,elem)->priority ;
+  return list_entry(a,struct thread, elem)->priority > list_entry(b,struct thread,elem)->priority;
+}
+
+bool cmp_sema_priority(const struct list_elem* a, const struct list_elem*b,void * axu UNUSED){
+   return list_entry(a,struct semaphore_elem, elem)->priority > list_entry(b,struct semaphore_elem,elem)->priority;
 }
 
 void update_thread_priority_by_holding_locks(struct thread* t){
@@ -625,4 +632,42 @@ void update_thread_priority_by_holding_locks(struct thread* t){
         }
   }
   t->priority = max_priority;
+}
+
+/* Increase recent_cpu by 1. */
+void
+thread_mlfqs_increase_recent_cpu_by_one (void)
+{
+  ASSERT (thread_mlfqs);
+  ASSERT (intr_context ());
+  struct thread *current_thread = thread_current ();
+  if (current_thread == idle_thread)
+    return;
+  current_thread->recent_cpu = FP_ADD_MIX (current_thread->recent_cpu, 1);
+}
+
+
+/* Every per second to refresh load_avg and recent_cpu of all threads. */
+void
+thread_mlfqs_update_load_avg_and_recent_cpu (void)
+{
+  ASSERT (thread_mlfqs);
+  ASSERT (intr_context ());
+
+  size_t ready_threads = list_size (&ready_list);
+  if (thread_current () != idle_thread)
+    ready_threads++;
+  load_avg = FP_ADD (FP_DIV_MIX (FP_MULT_MIX (load_avg, 59), 60), FP_DIV_MIX (FP_CONST (ready_threads), 60));
+
+  struct thread *t;
+  struct list_elem *e = list_begin (&all_list);
+  for (; e != list_end (&all_list); e = list_next (e))
+  {
+    t = list_entry(e, struct thread, allelem);
+    if (t != idle_thread)
+    {
+      t->recent_cpu = FP_ADD_MIX (FP_MULT (FP_DIV (FP_MULT_MIX (load_avg, 2), FP_ADD_MIX (FP_MULT_MIX (load_avg, 2), 1)), t->recent_cpu), t->nice);
+      thread_mlfqs_update_priority (t);
+    }
+  }
 }
