@@ -99,13 +99,12 @@ timer_sleep (int64_t ticks)
   // int64_t start = timer_ticks ();
   struct thread * cur =  thread_current();
   cur->blocked_ticked = ticks;
-  list_remove(&cur->elem);
+
   list_push_back(&blocked_thread_list, &cur->elem);
 
   thread_block();
   intr_set_level(old_level);
-  // while (timer_elapsed (start) < ticks) 
-  // thread_yield ();
+ 
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be

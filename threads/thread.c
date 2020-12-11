@@ -107,6 +107,7 @@ thread_init (void)
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
+
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
@@ -231,6 +232,7 @@ thread_block (void)
 {
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
+  
 
   thread_current ()->status = THREAD_BLOCKED;
 
@@ -254,7 +256,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
 
   ASSERT (t->status == THREAD_BLOCKED);
-  // list_push_back (&ready_list, &t->elem);
+  //list_push_back (&ready_list, &t->elem);
   list_insert_ordered(&ready_list,&t->elem,(list_less_func *)&cmp_thread_priority,NULL);
   t->status = THREAD_READY;
 
@@ -325,10 +327,10 @@ thread_yield (void)
   
   ASSERT (!intr_context ());
 
-  old_level = intr_disable ();
+  old_level = intr_disable (); 
   if (cur != idle_thread) 
   list_insert_ordered(&ready_list, &cur->elem, (list_less_func*) &cmp_thread_priority, NULL);
-  // list_push_back (&ready_list, &cur->elem);
+  //list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -355,12 +357,12 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 blocked_thread_foreach (thread_action_func *func, void *aux)
 {
-  struct list_elem *e;
+  struct list_elem *e,*n;
 
   ASSERT (intr_get_level () == INTR_OFF);
-
   for (e = list_begin (&blocked_thread_list); e != list_end (&blocked_thread_list);
-       e = e->next ){
+       e=n){
+       n=e->next;
       struct thread *t = list_entry (e, struct thread, elem);
       func (t, aux);
     }
@@ -389,14 +391,13 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  thread_current()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
   return thread_current()->nice;
 }
 
@@ -404,7 +405,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
+ 
  return FP_ROUND (FP_MULT_MIX (load_avg, 100));
 }
 
@@ -412,8 +413,9 @@ thread_get_load_avg (void)
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+
+  return FP_ROUND (FP_MULT_MIX (thread_current ()->recent_cpu, 100));
+  
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.

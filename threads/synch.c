@@ -64,11 +64,11 @@ sema_down (struct semaphore *sema)
 
   ASSERT (sema != NULL);
   ASSERT (!intr_context ());
-
+  
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      list_push_back (&sema->waiters, &thread_current ()->sema_elem);
       thread_block ();
     }
   sema->value--;
@@ -123,7 +123,7 @@ sema_up (struct semaphore *sema)
     for (e = list_begin (&sema->waiters); e != list_end (&sema->waiters);
         e = list_next (e))
       {
-        struct thread *t = list_entry (e, struct thread, elem);
+        struct thread *t = list_entry (e, struct thread, sema_elem);
         if(t->priority  > max_p){
           max_p = t->priority;
           maxp_t = t;
@@ -131,13 +131,14 @@ sema_up (struct semaphore *sema)
       }
 
     if(maxp_t){
-      list_remove(&maxp_t->elem);
+      list_remove(&maxp_t->sema_elem);
       thread_unblock(maxp_t);
     }
   // }
   sema->value++;
   intr_set_level (old_level);
-  if(!thread_mlfqs && max_p > thread_current()->priority) thread_yield();
+  if(max_p > thread_current()->priority) thread_yield();
+  
 }
 
 static void sema_test_helper (void *sema_);
@@ -246,6 +247,7 @@ lock_acquire (struct lock *lock)
   struct thread* cur = thread_current();
   lock->holder = cur;
   list_push_back(&cur->locks,&lock->elem);
+
   if(!thread_mlfqs){
     lock->max_priority =  cur->priority;
     cur->lock_waiting = NULL;

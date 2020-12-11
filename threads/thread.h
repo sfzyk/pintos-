@@ -94,7 +94,8 @@ struct thread
     struct list locks;                  /* Locks a thread holds,it get actully priority from that*/
     struct lock *lock_waiting;         /* a Thread can only have one donating locks*/
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. ready_list & sema_waiter & blocked_list*/
+    struct list_elem elem;              /* List element. ready_list& blocked_list*/
+    struct list_elem sema_elem;         /*  sema_waiter  */
     int64_t blocked_ticked;                 /* ticks remains for block*/ 
     fixed_t recent_cpu;
     int64_t nice;
