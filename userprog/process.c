@@ -19,7 +19,7 @@
 #include "threads/vaddr.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (const char *file_name, void (**eip) (void), void **esp,char ** argv, int argc);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -30,6 +30,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+ 
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -50,22 +51,33 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+  char * args_all[20];
+  int arg_num=0;
+  char * args_in;
+  while((args_all[arg_num] = strtok_r(file_name_," ", &args_in))!=NULL){
+    file_name_ = NULL;
+    arg_num++;
+  }
+  arg_num--;
+
+  char *file_name = args_all[0];
   struct intr_frame if_;
   bool success;
+
+ 
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (file_name, &if_.eip, &if_.esp, args_all, arg_num);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
-
+ 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -88,6 +100,9 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(1)
+    thread_yield();
+
   return -1;
 }
 
@@ -195,7 +210,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp,char ** argv, int argc);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -206,7 +221,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (const char *file_name, void (**eip) (void), void **esp,char ** argv, int argc) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -302,7 +317,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp,argv,argc))
     goto done;
 
   /* Start address. */
@@ -424,10 +439,31 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
+
+static bool
+get_user (const uint8_t *uaddr)
+{
+int result;
+asm ("movl $1f, %0; movzbl %1, %0; 1:"
+: "=&a" (result) : "m" (*uaddr));
+return result;
+}
+/* Writes BYTE to user address UDST.
+UDST must be below PHYS_BASE.
+Returns true if successful, false if a segfault occurred. */
+static bool
+put_user (uint8_t *udst, uint8_t byte)
+{
+  int error_code;
+  asm ("movl $1f, %0; movb %b2, %1; 1:"
+  : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+  return error_code != -1;
+}
+
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp,char ** argv, int argc) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -436,8 +472,37 @@ setup_stack (void **esp)
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
+      char *act_arg[20];
+      if (success){
+        void *arg_mem = PHYS_BASE - 1;
+        for(int i=argc;i>=1;i--){ // put arg on it
+          int arg_len = strlen(argv[i]);
+
+          for(int j=0;j<=arg_len;j++){
+            put_user(arg_mem-arg_len+j, argv[i][j]);
+          }
+          arg_mem -= arg_len + 1;
+          act_arg[i] = arg_mem + 1;
+        }
+        arg_mem = (void *)((int)arg_mem & 0xfffffffc);// do align 
+
+        *(char**)(arg_mem-4) = NULL;
+        arg_mem -= 4;
+
+        for(int i =argc;i>=1;i--){
+          *(char**)(arg_mem-4) = act_arg[i];
+          arg_mem -= 4;
+        }
+
+        *(char**)(arg_mem-4) = arg_mem +1;
+        arg_mem -= 4; // argv
+
+        *(char**)(arg_mem-4) = argc;
+        arg_mem -= 4; // argc
+
+        *(char**)(arg_mem-4) = NULL; //return address
+        *esp = arg_mem-4;
+      }
       else
         palloc_free_page (kpage);
     }

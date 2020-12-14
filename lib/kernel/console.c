@@ -53,7 +53,7 @@ static bool use_console_lock;
 
    This kind of thing is very difficult to debug, so we avoid the
    problem by simulating a recursive lock with a depth
-   counter. */
+   counter.*/
 static int console_lock_depth;
 
 /* Number of characters written to console. */
